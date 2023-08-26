@@ -1,0 +1,285 @@
+**************************************************************
+        *        INTRODUCTION TO STATA: N°1       *
+**************************************************************
+* This is a do-file. Here we write commands/"orders" that Stata interprets and execute. 
+* Using do-files allows us to document what we have done and to replicate/modify our work.
+* Stata works by writing a command followed by a variable name, you can also use a "," to add some options. Options always comes after a comma. As Stata is case sensitive, its easier if all databases and variables are in lower case.
+* HELP("command"): will give you information about the command. 
+* When we write something after "*" means that it is only text. This is very useful to write down your own thoughts or interpretations. Also, yo can use * or /* */. 
+/*This notation with slashes and stars is used to write several lines of comments.*/
+*LOG. Log files record what you do while working in Stata (graphs, tables, regressions, etc.). You can look in your log to see the results. 
+*While the do-file shows the code we used, the log file shows both the code used and the results it produced. 
+
+log using intro.log
+log close
+log using intro.log, replace
+log using "intro 1.log", replace
+* Stata will not accept file names containing spaces, hence the quotation marks in the command below
+
+*** SET THE WORKING DIRECTORY*** 
+*Setting the directory tells Stata in which folder your data is located and where your new data is going to be saved. 
+
+cd "C:\Users\user\Documents\Stata\Sesion1"
+
+* 'cd' is short for 'change directory'. 
+
+*** LOADING AND SAVING DATA***
+use intro.dta, clear
+
+* use, specifies to use a file from the working directory (the file must be in the working directory).
+*'clear' tells Stata to remove any data that may currently be in its memory before opening the new file. 
+*'clear' can be used as an option, or as a command. 
+*'clear' as a command clears the changes you've made on the dataset 
+* 'clear all' set all the process you have done 
+* If there is another data set already open, Stata will not open the file. 
+* If you make changes to the data, Stata will not allow you to load any new data without saving or clearing. 
+
+save intromodified.dta, replace 
+*Remember to save you edited dataset as a new dataset if you want to work with it without having to run the do-file again.
+*The new and the original dataset can be found in the working directory.
+
+*** INSPECT THE DATA SET***
+describe
+*'describe' tells some of the technical and practical details of our data (variable name, how it is stored, definition)
+*There are two basic storage types: alphabetical and numerical 
+*'Strings" (str9) are alphabetical and often cannot be used for statistical analysis. 
+* There are several different numerical Storage types. 'byte', 'int' and 'long' are all integer storage types (i.e. no decimal places) 
+* 'float' and 'double' are decimal storage types. 
+
+inspect age
+*inspect' tells us a lot of useful information about a variable, including a small histogram. 
+
+codebook age
+*'codebook' is useful for looking at the values of categorical variables
+* After creating a new variable and assign labels, this command can be use to re-check what the labels represent.
+
+summarize age
+* 'summarize' to see statistical information (mean, std. dev, min, max). 
+
+compress
+*When working with larger datasets, this can save a lot of space. (i.e. int -> byte). 
+
+list age
+* By typing 'list', Stata displays all of the data for the given variable on the screen. Some useful options 
+
+list age
+list age, sep(0) 
+list age, sep(10) 
+list in 33/44
+list age, sepby(home_owner)
+sort home_owner
+list name home_owner, sepby(home_owner)
+
+*'sep(0)' shows no line that separates each cases 
+*'sep(10) shows a line that separates cases in groups of 10
+*in 33/44 shows only the data in cases 33 to 44.
+*name home_owner, sepby(home_owner), makes a list of names, where there is a line that separates those who don't and who do own a house
+
+browse
+br
+*Is equivalent to clicking the icon with a table and a magnifying glass.
+*It allows us to view the dataset, and is often more convenient than 'list'. 
+
+browse age if home_owner == 0
+*This will show only the variable age when the subjects ar not (0) owners of houses.
+
+browse if type == "sedan" & home_owener==0
+
+sort age income name 
+*'sort' arrenge the observations form smallest to largest (or from A to Z).
+*First, 'age' is sorted from smallest to larges. Then, within each value of 'age', 'income' will be sorted from smallest to largest, etc. 
+
+gsort age -income
+*'gsort' sort things from largest to smallest
+*We sort 'age' from smallest to largest. Then, within each value of 'age', we sort income from largest to smallest.
+
+bysort education: egen mean_inc = mean(income)
+*'egen' allows to generate variables across observations. 
+* this command, creates a column name mean_inc in which we know the mean income by years of education. 
+
+*** RENAME VARIABLES AND CREATE LABELS***
+*It is useful to rename the variables into something you and others can easily interpret. 
+
+rename var1 name 
+*Command 'rename' + current variable name + name we wish to give it 
+
+label variable name "First name"
+*This adds a description to the variable for our own personal use. 
+
+label define edulbl 1 "Primary" 2 "Secondary" 3 "Tertiary" 4 "missing"
+label variable edu "Education Level"
+label values edulbl
+*'label define' creates labels that are assigned to specific values
+*'label values' applies the created labels to the desired variable. 
+
+*** CREATE A CATEGORICAL VARIABLE FROM A CONTINUOUS VARIABLE ***
+*When working with variables such as education, it is a common practice to create a categorical variable from a continuous one.
+*The continuous variable (number of years in education) will change to the categorical variable (degree earned). 
+*To do this, we use commands 'generate' and 'replace'. 
+*'Generate' creates and entirely new variable (i.e. a new column in your dataset)
+*'Replace' will edit an already existing variable.
+* Basic criteria for a categorical variable: 
+*    a) Mutually exclusive (no overlap between categories)
+*    b) All encompassing (all values of the variable are captured by one of the categories). 
+ 
+generate edu = 1 if education<=9
+replace edu=2 if education>=10 & education<=12
+replace edu=3 if education>12
+
+*Stata considers '.' as a positive infinity! This can bias the results.
+generate edu = 1 if education<=9
+replace edu=2 if education>=10 & education<=12
+replace edu=3 if education>12 & education!=.
+replace edu=4 if education==.
+*Here we specify that the top educational level should be between 12 years and the highest real number before infinity (i.e. missing values).
+*Another option would be to keep missing values as a category of their own so that we do not lose them from the analysis. 
+*To make a category for missing values.
+replace edu = 99 if education ==.
+
+***CREATING DUMMY VARIABLES FROM ANOTHER VARIABLE***
+
+tabulate children, generate(kids_d)
+*We can use tabulate to create dummies from a specific variable. 
+*Stata creates variable kids_d1, kids_d2, kids_d3, etc. that take on values 0 and 1 according to how many kids there are.
+*When many varaibles start with the same word, we add a star to avoid typing each variable separately. 
+*Stata has created a dummy kids_d1 taking value 1 if the person has no kids and 0 if they have any kids. 
+*Stata has created kids_d2 where the persona has one kid, etc. 
+
+label variable kids_d1 "No kids (0-1)"
+label variable kids_d2 "One kid (0-1)"
+label variable kids_d3 "Two kids (0-1)"
+label variable kids_d4 "Three kids (0-1)"
+label variable kids_d5 "Four kids (0-1)"
+
+label define kidslbl 0 "No" 1 "Yes"
+label values kids_d* kidslbl
+
+*** CREATE TABLES ***
+
+tab education
+*one-way frequency table which number of observations there are in each category
+
+tab education home_owner
+*two-way frequency table, by default second variable is the column
+
+tab education home_owner, row
+tab education home_owner, column 
+*gives us the percentages in each cell with regard to either the row or the column category. 
+
+tab education home_owner, column nofreq
+*The option 'nofreq' tells Stata that we only want the percentages and not the frequencies.
+
+tab edu, sum(income)
+*'tab' and 'sum' are used together to get summary statistics along with frequencies. 
+
+table edu, statistics(median income)
+table edu, statistics(mean income)
+table edu, statistics(max income)
+table edu, statistics(min income)
+table edu, statistics(sd income)
+
+*** SUMMARY STATISTICS OF CONTINUOUS VARIABLES***
+
+* Useuful to test for normality in Stata
+* Linear and non-linear regression assume that residual are normally distributed. 
+* Some hypothesis test assume that the data follow a normal distribution.
+
+sum age income
+*'sum' gives the basec of the variables' distribution (mean, standard deviation, minimum and maximum)
+
+sum income, detail
+*'detail' will get a bit more information (i.e. percentiles, skewness, kurtosis). 
+
+centile income, centile (0 (10) 100)
+centile income, centile (25 50 75)
+
+
+*** CALCULATIONS IN STATA ***
+*We can use the "egen" command to help us manually calculate the covariance of labor income and years of education
+*Formula for covariance: (1/n-1)(sum(xi-xavg)*(yi-yavg))
+
+egen xmen = mean(education)
+gen xxmean = education - xmean
+egen ymean = mean(labor_income) 
+gen yymean = labor_income - ymean 
+gen xy = xxmean*yymean 
+egen xysum = sum(xy)
+list xysum in 1
+display 2062407/48
+
+*generate mean years of education 
+*substracts the mean from the variable (xi-xavg)
+*generate mean of labour income (yvag) 
+*substracts the mean from the variable (yi-yavg)
+*generates the product of the means of years of education and labor income ((xi-xavg)(yi-yavg))
+*sums the product of the means (sum(xi-xavg)*(yi-yavg))
+*gives us the numerator 
+*display is a command to use a calculator function in stata (denominators comes from n-1, where n is the number of observations)
+
+corr education labor_income, covariance 
+*to find the covariance
+
+*** CREATE GRAPHS***
+
+histogram income, percent normal bin(30)
+histogram income, bin(30)
+*'percent' tells Stata to report the histogram in terms of percentages instead of defail, density
+*'normal' overlays a normal distribution plot onto your data to give you and idea of how your data compare. 
+*'bin(x)' telss Stata to use xn number of categories in the histogram on the x-axis
+
+histogram income if income<100000, percent normal bin(10)
+*'if' to look at the histogram for a subset of our data. 
+*Useful to visualize how outliers are affecting the distribution. 
+
+twoway bar mean_inc education, title(Mean Income by Years of Education) ytitle(Mean Income) xtitle(Years of Education)
+*Gives us a bar chart with mean_inc on the y-axis and education on the x-axis
+
+***MISSING VALUES***
+* Stata drops obobservationsith missing values on any of the variables in a regression model.
+* The number of observations used in the regression may get smaller as you add control variables.
+* Think about whether values are missing at random (not a problem) or if selection is going on (can change estimates). 
+
+* WAYS TO DEAL WITH MISSING VALUES: 
+
+* 1) Delete observations with missing values on any of the variables.
+* Examine how large proportion of the observations you are deleting (the smaller the better).
+
+tab education edu, missing 
+drop if education==.
+*Specifying 'missing' tells Stata we want to see the observations with missing values on 'education' (otherwise they will not be shown).
+
+*Carefully consider whether dropping missing values is the best option 
+gen flag=1 if education==.
+*Sometimes flagging observations that contain missing values is better than dropping them. 
+*Flagging allows you to KEEP TRACK (RETAINING)of missing values without discarding the entire observation. This is particularly important when the missing data might hold valuable information or context that could be useful in your analysis.
+*By flagging missing values you MAINTAIN the original sample size of your data. This can be crucial for maintaining statistical power, especially in cases where your dataset is limited.
+*In time series data, dropping observations with missing values could disrupt the chronological order of the data, potentially affecting any time-related analysis.
+*Flagged missing values can be used as a reference for imputing the missing data through techniques like MULTIPLE IMPUTATION. 
+
+* 2) Run your regressions in a standarized model. 
+* You run the shorter models on the sample as the longer models. 
+* Compare coefficients across the big and small samples. 
+
+reg hlth hi fml_ex age_ex famsize_ex 
+*These variables have missing values as stata automatically excludes variables with missing values. 
+
+gen sample3=1 if e(sample) 
+* Generate a dummy for observations included in the small sample regression. 
+* Stata will look at what sample the regression run on, that is why we use e.
+
+reg hlth hi fml_ex 
+eststo m1
+reg hlth hi fml_ex if sample3==1
+eststo m2
+esttab m1 m2, b(%7.2f) se(%7.2f) r2(%7.2f) label
+
+* If the coefficients in "small sample" and "big sample" are very different from the coefficients, missing observations in the small sample could be subject to selection.
+* In that case, you have to think about what the reason for the selectively missing values may be, and how it impacts the interpretation of your findings. 
+
+***DESTRING ***
+destring gdp2004, replace force
+*desting command to force stata to interpret thenumbers as numbers rather than letters. 
+
+**************************************************************
+        *        INTRODUCTION TO STATA: N°1       *
+**************************************************************
