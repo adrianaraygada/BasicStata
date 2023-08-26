@@ -1,0 +1,120 @@
+****************************************************************************************************
+*             METHOD I. MULTIVARIATE ORDINARY LEAST SQUARE (OLS) REGRESSION                        *
+****************************************************************************************************
+
+* Ideally, we will work with experiments that uses randomized trials. However, most of the time social scientist will have to rely on non-experimental data
+to answer their research questions. 
+* Multivariate OLS regresion has some downsides: Omited Variable Bias (OVB), Selection Bias (SB), Bad Controls. 
+* When OVB and SB occurr, the Conditional Independence Assumption (CIA) is not fulfilled. 
+* Conditional Independence Assumption (CIA): Control and Treatment Groups are equal on average in terms of all relevant factors.
+
+*** SETTING THE WORKING DIRECTORY AND STARTING A LOG FILE***
+cd "C:\Users\user\Documents\MyFolder\MySubFolder\Method I"
+log using "method1.log", replace
+log close *at the end*
+
+*** WAYS TO EXAMINE CORRELATIONS BETWEEN VARIABLES***
+* correlate, pwcorrelate, scatter (visually) and regression models.}
+* These are good ways to examine correlations between variables 
+* correlate and pwcorrelate produce Pearson's correlation coefficient and a test of significance (if specified). 
+* The PEARSON CORRELATION COEFICIENT (r) measures a linear correlation, the strength and direction of the relationship between two variables.
+It is a number between –1 and 1
+
+pwcorr y x1, star (.05)
+pwcorr y x2, star (.05)
+pwcorr x1 x2, star (.05)
+
+* To interprete the results, we need to focus on the sign (positive (+) correlation or negative (-) correlation), and if there is a star in the coefficient.  
+-0.30* is a negative correlated and significant. 
+
+***VISUAL CORRELATION***
+
+scatter y x1, star (.05)
+scatter y x2, star (.05)
+scatter x1 x2, star (.05)
+
+***REGRESSION MODELS*** 
+* To install and store the model. 
+findit eststo
+
+regress y x1 // SHORT
+eststo m1
+regress y x1 x2 // LONG
+eststo m2
+esttab m1 m2
+
+* To interpret the results we need to compare the coefficients and see how they change when x2 is included. 
+* If there are very similar, then there are no OV. However, if they change too much there is an OV and, generally, we should include x2 in the model. 
+
+***HAUSMAN TEST*** 
+hausman m1 m2 
+*It is a test to see whether the beta coefficients of x1 in the two models (m1 and m2) are statistically the same. 
+* The Hypothesis 0 is H0: Difference in coefficients not systematic
+* The coefficient we look at is Prob > chi2. If it is >0.10 we cannot reject the null hypothesis (that is what we expect: differences are not systemic / models are statistically the same)
+* If the probability is very close to cero (Prob > chi2 = 0.0000), the models are different from each other and we reject the null hypothesis that there is no systemic difference in the coefficients of the models. 
+
+*** OMITED VARIABLE BIAS (OVB)***
+*And OVB occurs when a variable X2 is a determinant of Y and correlated with at least one included regressor (X1). 
+*If the Omitted Variable can be measured, we should include it as an additional regressor or a control variable (W).
+*If an OV (x2) does not correlate with the independent variable (y), ommitting it will not bias the results. 
+* When an OV (x2) correlates with your regressor (x1) and the outcome (y), should be included in the model. 
+
+***SELECTION BIAS***
+* Lets imagine we have a set of data that focus on the relation between health insurance (hi) and health outcomes (ho). 
+* Before doing the regression analysis, we check for balances between groups. 
+* Our treatment would be if they have higher education. 
+* Selection may lead to compare apples and oranges (=different people select into having/not having insurance). 
+* Occupation is an outcome of college, so there is a strong correlation. 
+* Always think about what your control variables are actually capturing. 
+
+use data.dta, clear
+tab hi if sex==0, sum (ho)
+tab hi if sex==1, sum (ho) 
+
+***BAD CONTROLS***
+*Not all controls are good. 
+*In colleges, wages and occupation, including occupation as a control can be problematic. 
+*Occupation is a result of going to college or not, so is a bad control. Someone with college education will have more income than someone who doesn't.
+
+*MEN / WOMEN TABLES INCLUDING ALL VARIABLES
+tabstat ho x2 x3 x4 x5 x6 if sex==0, by(hi) stat(mean) format (%4.2f)
+tabstat ho x2 x3 x4 x5 x6 if sex==1, by(hi) stat(mean) format (%4.2f)
+*We can analise health insurance (hi) in each variable. Do any of these variables have an impact on hi?
+*Average health status (y) is higher among insured(hi==1) than uninsured(hi==0), higher among people with more years of education (x2). 
+*Insured people (hi==1) in the survey are older (x3), have smaller families (x4), are more likely to be employed (x5) and white (x6)
+
+*TTEST TO TEST IF DIFFERENCES FOUND IN TABLES ARE STATISTICALLY SIGNIFICANT
+ttest x2 if sex==0, by(hi) 
+ttest x2 if sex==1, by(hi) 
+* To check for balance we need to focus in the p.value.
+* Null hypothesis is that there is a significant difference between the groups, while the counter hypothesis is that the difference is zero. 
+* Null hypothesis is that the mean years of education are the same for insured and uninsured, while the counter hypothesis is that the mean years of education are different.
+* If P. value (PR(|T| > |t|) = 0.000 or close to zero, then it is a difference between the variables. 
+
+*** REGRESSION HO ON HI AND OLS***
+reg ho hi, robust 
+* robust standard errors deal with heteroskedasticity
+* When we regress those variables we find that "health insurance improves health status"; however if we add controls and run a MULTIVARATE OLS REGRESSION results change
+
+reg ho hi, robust
+eststo m1
+reg ho hi sex x2 x3, robust
+eststo m2
+reg ho hi sex x2 x3 x4, robust
+eststo m3
+reg ho hi sex x2 x3 x4 x5, robust
+eststo m4
+reg ho hi sex x2 x3 x4 x5 x6, robust
+eststo m5
+reg ho hi sex x2 x3 x4 x5 x6 x7, robust 
+eststo m6
+
+esttab m1 m2 m3 m4 m5 m6, b(%7.2f) se(%7.2f) r2(%7.2f) label
+*To put all the models in a table. 
+*The options specify that we want to see the coefficients ('b'), standard errors ('se), and r-squared('r2') with two decimals. 
+*'label' specify that we want to show variable labels in place of variable names. 
+
+*** CORRELATIONS ***
+*CORRELATIONS ARE NOT CAUSALITY. We only observe associations. 
+*Define your regression model based on theory. What variables are theoretically important? 
+*Usually variables measured before assignment to treatment are good controls. 
