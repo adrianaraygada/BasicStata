@@ -1,0 +1,182 @@
+********************************************************************************
+*                  METHOD 3. REGRESSION DISCONTINUITY DESING                   *
+********************************************************************************
+
+*A Regression Discontinuity Designs (RDD) exploit arbitrary rules and threshols in order to find "as good as random" situtions to get rid of bias. 
+*RDD can be sharp (treatment switches on/off at a given value) or fuzzy (probability/intensity of treatment jumps at a threshold) 
+*For example, if we look at data on mortality and 21st birthday (legal drinking age in US) we have a sharp RD (threshold flips on/off). 
+*Causal question: Does alcohol consumption increase the mortality of young adults?
+*The minimum legal drinking age (mlda) can be seen as a quasi-experiment whereby drinking is assumed to happen on one side of the threshold, but not the other.
+*The unobserved and observed variables that also determine mortality are likely to be smooth across the 21-year threshold. 
+*We can attribute changes in mortality around the threshold to changes in drinking. 
+
+*** SETTING THE WORKING DIRECTORY AND STARTING A LOG FILE***
+cd "C:\Users\user\Documents\MyFolder\MySubFolder\Method 3"
+log using "method3.log", replace
+log close *at the end*
+
+***LOADING AND EXPLORING THE DATA***
+
+use AEJfigs, clear
+br
+
+* We examine our "running variable" (age) and how it relates to our outcomes. 
+*RDD requires in-depth knowledge on the policy/rule/law that we want to exploit. 
+*Argue that the running variable combined with the arbitrary rule creates variation in the outcome that is as good as random. 
+
+*VISUAL EXAMINATION*
+twoway scatter all agecell
+
+*CREATE A TREATMENT DUMMY 
+gen over21=agecell>=21
+label variable over21 "21st birthday cutoff"
+
+gen centered_age=agecell-21 
+*Here, we center the age variable around the threshold. 
+label variable centered_age "Centered age"
+*Centered age will be used as the running variable because it is easier to interpret than the "original" age. 
+
+*PREDICT REGRESSION LINES ON EACH SIDE OF THRESHOLD  
+reg all centered_age over21 
+*Regression for mortality as a function of age, controlling away what happens after 21st birthday. 
+*This fits a regression line based on the expected trend in mortality if nothing changes at the cutoff. 
+
+predict allfit1
+* 'predict' calculates a linear prediction of the mortality rate by age based on the regression we just ran. 
+* This command stores the predicted values in a new variable. 
+* We use these values to graph mortality by age before turning 21. 
+
+gen over_bd=over21*centered_age 
+*This variable is zero before 21st birthday and one after. 
+*It captures the trend in mortality starting at the 21st birthday. 
+
+label variable over_bd "Age*21st birthday cutoff"
+
+reg all over21 over_bd 
+*Fits a regression for mortality as a function of age after the 21st birthday. 
+
+predict allfit2
+* 'predict' calculates a linear prediction of the mortality rate by age based on the regression we just ran. 
+
+*FIGURE* 
+twoway (scatter all agecell) 
+twoway (scatter all agecell) (line allfit1 agecell if agecell<21) ///
+                             (line allfit2 agecell if agecell>=21), ylabel(80(5)115)	
+
+*The figure shows all-cause mortality by age (three graphs in the same figure). 
+*First graph: scatterplot of mortality rates by age
+*Second and third graph: line graphs of predicted mortality before and after 21st birthday. 
+*The Y-axis ranges from 80 to 115 at 5-unit intervals. 
+
+* IT IS EASY TO MISTAKE REAL DISCONTINUITY WITH NON-LINEARITIES* 
+*To know there is a "mild curvature", we might want to use a squared term for (centered) age and age after 21st birthday.  
+
+gen centered_age2 = centered_age^2
+label variable centered_age2 "Centered age squared"
+
+gen over_bd2 = over21*centered_age2
+label variable over_bd2 "Age*21st birthday cutoff squared"
+
+reg all centered_age centered_age2 over21 
+predict allfitq1
+reg all over21 over_bd over_bd2
+predict allfitq2
+
+*FIGURE*
+twoway (scatter all agecell) (line allfit1 allfitq1 agecell if agecell<21,  lcolor(red black) lwidth(medthick medthick) lpattern(dash)) ///
+                             (line allfit2 allfitq2 agecell if agecell>=21, lcolor(red black) lwidth(medthick medthick) lpattern(dash)), legend(off) ylabel(80(5)115)
+
+*In this example, the quadratic function seems to fit the data better than the linear one. 
+*The sharp jump is still captured but the recovery pattern of mortality has a better fit. 
+
+* LETS FOCUS ON CAUSES OF DEATH THEORETICAL RELATED TO ALCOHOL (MOTOR VEHICLE ACCIDENTS - MVA) 
+
+twoway scatter mva agecell 
+
+* "MOTOR VEHICLE ACCIDENTS" ON LINEAR, AND QUADRATIC ON EACH SIDE
+reg mva centered_age centered_age2 over_bd
+predict mvfit1
+reg mva over21 over_bd over_bd2
+predict mvfit2
+
+* "INTERNAL CAUSES" ON LINEAR, AND QUADRATIC ON EACH SIDE
+reg internal centered_age centered_age2 over_bd
+predict infit1
+reg internal over21 over_bd over_bd2
+predict infit2
+
+twoway (scatter mva internal agecell) (line mvfit1 infit1 agecell if agecell<21) ///
+                                      (line mvfit2 infit2 agecell if agecell>=21), ///
+									   legend(off) text(28 20.1 "Motor vehicle fatalities") ///
+									               text(17 22 "Deaths from internal causes")
+		
+* There is a jump in MVA-related deaths. 
+		
+* FINALLY, WE WILL USE OUR RD DUMMY (21ST BIRTHDAY CUTOFF) IN A REGRESSION. 
+* Assuming that our reasoning is correct, the dummy will give us an unbiased estimate of the causal effect of alcohol consumption on the mortality of young adults. 
+
+* CREATE OUTCOME "OTHER EXTERNAL CAUSES OF DEATH"
+gen ext_oth=external-homicide-suicide-mva
+label variable ext_oth "Other external causes"
+
+* Let's predict different causes of mortality using our RD Dummy. 
+* Centered age is included as a control variable, to account for mortality changes that are non-related to the 21st birthday. 
+
+reg all centered_age over21, robust 
+eststo all
+reg mva centered_age over21, robust 
+eststo mva
+*before turning 21, the mortality rate is 29%. After it increases 5%
+reg suicide centered_age over21, robust 
+reg homicide centered_age over21, robust 
+reg ext_oth centered_age over21, robust 
+reg internal centered_age over21, robust 
+reg alcohol centered_age over21, robust 
+
+*OR, IN A LOOP 
+foreach var of varlist all mva suicide homicide ext_oth internal alcohol {
+	reg `var' centered_age over21, robust
+	estimates store `var'
+}
+
+estimates table all mva suicide homicide ext_oth internal alcohol, stat(r2) b(%7.3g) se(%6.2g) p(%4.3f) varlabel
+
+*ADDING QUADRATIC TERMS (COLUMN 2)
+foreach var of varlist all mva suicide homicide ext_oth internal alcohol {
+	reg `var' centered_age centered_age2 over21 over_bd2, robust
+	estimates store `var'
+}
+
+estimates table all mva suicide homicide ext_oth internal alcohol, stat(r2) b(%7.3g) se(%6.2g) p(%4.3f) varlabel
+
+* RESTRICT THE BANDWIDTH OF THE ANALYSIS*
+*For example, restrict the bandwidth before and after the 21st birthday might be important if we suspect that observations furter away from treatment might be biasing our results. 
+*Reducing the bandwidth has a tradeoff: reduce sample. Power close to the threshold. 
+
+foreach var of varlist all mva suicide homicide ext_oth internal alcohol {
+	reg `var' centered_age over21 if agecell>=20 & agecell<=22, robust
+	estimates store `var'
+}
+
+estimates table all mva suicide homicide ext_oth internal alcohol, stat(r2) b(%7.3g) se(%6.2g) p(%4.3f) varlabel
+*just interested in the 21st birthday cutoff.
+
+* ADDING QUADRATIC TERMS 
+foreach var of varlist all mva suicide homicide ext_oth internal alcohol {
+	reg `var' centered_age centered_age2 over21 over_bd2 if agecell>=20 & agecell<=22, robust
+	estimates store `var'
+}
+
+estimates table all mva suicide homicide ext_oth internal alcohol, stat(r2) b(%7.3g) se(%6.2g) p(%4.3f) varlabel
+
+* Trade-off between statistical power and potential bias. 
+* More observations (=more power, = smaller standard errors), but more potential bias. 
+* If possible, we can try to control for factors that we think are biasing our results (parametric RD) 
+* The sharp RD setup rests on the assumption that persons close to the cutoff can be used as each other's counterfactuals. 
+* If the RD is well thought through, it is possible to get closer to a causal effect. 
+
+***FUZZY REGRESSION DISCONTINUITY (FRD) DESIGN***
+
+* In a FRD setup, the probability of treatment changes sharply ar the cutoff point. 
+* Mechanically it is similar to instrumental variables setup (see 2SLS, from 2IV). 
+* Then, we use the cutoff for treatment as an instrument and 2SLS regression (same assumptions as for IV regression) 
