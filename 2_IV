@@ -1,0 +1,200 @@
+****************************************************************************************************
+*             METHOD 2. INSTRUMENTAL VARIABLES                     *
+****************************************************************************************************
+
+*In social science it is hard to do random controlled experiments (RCT).
+*However, it is possible to find causal analysis for quasi-experimental situations or "natural" experiments. 
+
+*** SETTING THE WORKING DIRECTORY AND STARTING A LOG FILE***
+cd "C:\Users\user\Documents\MyFolder\MySubFolder\Method 2"
+log using "method2.log", replace
+log close *at the end*
+
+***EXPERIMENTAL DATA (RANDOM CONTROLLED TRIAL)***
+
+*Imagine we want to analyze whether there are improvements in health related to the type of health insurance. 
+
+*CHECKING FOR BALANCES*
+*We need data pre-treatment (previous having a health insurance). Socioeconomic and health variables can be analyse. 
+*If variables are similar previous to the treatment, we could say that the treatment is was rand assigned 
+*So we tabulate: 
+tabstat sex age educ1 income1 hosp ghindx cholest mhi, by(any_ins) stat(mean) format(%4.3f)
+
+*To check whether the differences between treated and untreated are statistically significant we run a T-test (setting the decision rule at alpha=0.05).
+
+ttest cholest, by(any_ins) 
+ttest female, by(any_ins) 
+
+*If alpha is >0.05, there are no statistically significant differences between tretated/untreated. 
+*Using a linear regression will theoretically give us the same test as the ttest command. 
+*Clustering errors cannot be done in a t-test, so we have to use regression. 
+
+* LOOP COMMAND*
+*To save time, you can test all the vaiables at once using loop 
+*Loop {}. For each variable I run the same code
+
+foreach var of varlist sex age educ1 income1 hosp ghindx cholest mhi {
+	reg `var' any_ins, cl(famid)
+	estimates store `var'
+}
+
+estimates table sex age educ1 income1 hosp ghindx cholest mhi, stat(r2) b(%7.3g) se(%6.2g) 
+*The statistics shown are the estimated difference in means, its standard error, p-value, and r-squared. 
+
+* If we note a small and statistically significant difference in the share of women, if it is truley random this could be due to random variation
+
+*COMPARING HEALTH OUTCOMES BETWEEN TREATED/UNTREATED POST-TREATMENT ("AR EXIT"). 
+
+foreach var of varlist ghindxx cholestx mhix {
+	reg `var' any_ins, cl(famid)
+	estimates store `var'
+}
+
+estimates table ghindxx cholestx mhix, stat(r2) b(%7.3g) se(%6.3g) p(%4.3f)
+
+*p-values are not significant
+*it does appear that there is no difference with insurance status. 
+*When standard error is bigger than it's difference. It means that we can't establish any difference. 
+*Maybe the observation period is not enough. 
+
+
+* Based on the Rand Experiment, there are no health benefits from having insurance. 
+*  It should have been interesting to make it in levels of debt because people is not going to pay high amounts of money.
+
+
+***INSTRUMENTAL VARIABLES (IV)***
+
+* Since experimental data is hard, the next best thing is data that at least partly meet the criteria of random assignment to treatment. 
+
+* Angrist and Krueger's classic paper within Instrumental Variable Analysis ("Does compulsory school attendance affect schooling and earnings?").
+* The idea is to address selection into schooling by exploiting timing of birth combined with an arbitrary rule in the US School system. 
+* Selection issue: we cannot control for unobservable factors that might determine both how many years a person studies and the subsequent earnings (usually called "ability") 
+* Mechanism: among individuals born in the same year, later-born students enter school younger than those born earl in the year. 
+
+*IMPORTING AND EXPLORING THE DATA***
+
+use ak91.dta, clear
+br
+* For birth information we have year, quarter, and a variable that combines year and quarter. 
+* We also have a binary instrument for quarter of birth (0 for Q1-3, 1 for Q4). 
+* We expect quarter of birth to be a randomly assigned predictor of educational attainment. 
+* We expect it to be uncorrelated with earnings, other than through its impact on required educational attainment. 
+* Instrument: quarter of birth 
+* Assumption: the instrument has to be totally random
+
+tab qob z
+
+*LATE ASSUMPTIONS - LOCAL AVERAGE TREATMENT EFFECT*
+*Not everyone reacts the same way to the instrument. 
+* Under reasonable assumptions, IV captures the effect of treatment on compliers. 
+* COMPLIERS: Stayed in school longer due to legal requirement. 
+* ALWAYS-TAKERS: Would have stayed in school in any case. 
+* NEVER-TAKERS: Would not have stayed in any case. 
+* DEFIERS: Dropped out of school earlier to defy the legal requirement - Monotonicity assumption rules this group out!
+	
+* LATE ASSUMPTIONS:
+	*1. STRONG FIRST STAGE
+	*2. INDEPENDENCE ASSUMPTION
+	*3. EXCLUSION RESTRICTION
+	*4. MONOTONICITY (NO "DEFIERS", P. 113 IN THE BOOK).
+
+* 1. STRONG FIRST STAGE
+
+*The instrument has a clear effect on assignment to treatment. 
+*The challenge with IV is finding valid instruments. 
+
+* FIRST STAGE AND REDUCED FORM VISUALLY
+* Let's get and idea of whether quarter of birth and education are related to each other. 
+tab z, sum(schooling) // ALL YEARS
+
+*The reduced form is the effect of the instrument on the outcome. 
+*It represents the difference in earnings between those who were born in the fourth quarter and those who were not. 
+*If we don't have an effect, the study will be meaningless (=QOB does not matter for earnings). 
+*If QOB does not affect schooling, we have a weak instrument that we cannot use. 
+*We can assess this visually by taking summary statistics of earnings by birth quarter. 
+tab z, sum(ln_wage)
+
+* The first stage and reduced form is easier to grasp by GRAPHING rather than tables. 
+* Let's construct the mean education (first stage) and mean wage (Reduced form) per year and quarter. 
+* We need to boil the whole dataset down to the means for graphing with "collapse" command. 
+* It creates a new dataset with only the means, grouped by the instrument. 
+
+collapse (mean) schooling (mean) ln_wage (mean) qob, by(yqob)
+* We include qob because we want to keep it for labelling purposes (otherwise stata will drop it). 
+br
+
+graph twoway line schooling yqob
+* twoway specifies two variables, line specifies that data points should be connected with a line. 
+
+graph twoway (line schooling yqob) (scatter schooling yqob, mlabel(qob) msize(small) msymbol(S))
+*Scatter specifies the dots. 
+* mlabel, msize, and msymbol refer to the marker label, size, and shape. 
+
+* This graph is a visual representation of the "First Stage": The instrument must have an effect on the Causal Variable of interest.
+* Apart from QOB's getting more education that the earlier, we notice that education generally increases as american birth cohorts progress. 
+
+* The first stage represents the "well-behaved" part of the variation. 
+* It is the variation in educational attainment that is attributed to QOB, not ability or the like. 
+* It is thus free from selection bias, and acting as a quai-expriment. 
+
+* Graphing is not a formal test. 
+* Formal tests should always be done to determine first stage strength. 
+
+* FORMAL TEST OF THE FIRST STAGE AND REDUCED FORM*
+use ak91.dta, clear
+reg schooling z, r
+* 'r' is short for 'robust'.
+* being born in the fourth quarter is positively associated with educational attainment. 
+* The stronger the association between the instrument(s) and the treatment, the stronger the identification of the model. 
+* As a rule-of-thumb, a "STRONG" FIRST STAGE is when the F-STATISTICS of the first stage of 2SLS should exceed 10. 
+*Look at the F statistics, above 10. 
+
+reg ln_wage z, r
+* There is an effect from the instrument on the outcome (no need to interpret the magnitude at this stage) 
+* This means that QOB is capturing something that matters for earnings. 
+* If the effect had been zero, the IV analysis would be pointless. 
+
+* 2. INDEPENDENCE ASSUMPTION
+
+* Make sure our instrument is as good as randomly assigned. 
+* Quarter of births has to be uncorrelated with all unobserved determinants of earnings (conditional on covariates). 
+* Usually, no formal way to test this. 
+* For each IV model, there needs to be thorough reasoning around potential pathways of the instrument not being independent of unobservables. 
+* If you do an IV analysis you have to have a discussion about it. We could check for the balance. If a quarter of birth is related to any type of info. 
+
+* 3. EXCLUSION RESTRICTION
+
+* We assume that the instrument only affects the outcome via our causal variable of interest. 
+* QOB can only affect wages through years of education. 
+* If there were any other channels, the instrument will not be exclusive and we will get biased results. 
+* No way to test this! A discussion around the exclusion restriction should be made. 
+
+* 4. MONOTONICITY
+
+* Those influenced by the instrument must all be influenced in the same way. 
+* i.e. Being born in the fourth quarter can only make students stay in school longer, not drop out earlier. 
+* If the monotonicity assumption is violated, our estimates of the treatment effect may be washed out. 
+* The effect on defiers partly of fully cancels out the effect on compliers. 
+* There are some methods to test for monotonicity. 
+* You can also include a discussion. 
+
+
+***IV ESTIMATION: TWO-STAGE LEAST SQUARES (2SLS)***
+
+* The 'ivregress 2sls' command produces an 2SLS IV estimate
+*dependent variable (independent variable of interest = instrument). 
+
+ivregress 2sls ln_wage (schooling = z), first
+
+* The 'first' option yields detailed output on the first stage regression. 
+* Remember the rule-of-thum that it f-statistc of the first-stage regression should exceed 10. 
+
+*positive effect of schooling in lnwage. One additional years of schooling gives 7% increase on earnings. 
+
+***IV WITH MORE THAN ONE INSTRUMENT AND/OR COVARIATES***
+
+* The IV estimate above is for a simple case of one instrument and no other covariates. 
+* If you have covariates and more than one instrument, 'ivregress 2sls' can handle this. 
+
+* Running an IV model is not complicated when it comes to coding. However, it is hard to find a good instrument in the first place. 
+* A lot of theoretical work is needed to argue that an instrument is valid
