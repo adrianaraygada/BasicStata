@@ -1,0 +1,206 @@
+**************************************************************************************
+*             METHOD 4. FIXED EFFECTS AND DIFFERENCE-IN-DIFFERENCE                   *
+**************************************************************************************
+
+* FE and DiD are used to account for various biases (but are less efficient than working with IV or RDD)
+* We can use this, when we cannot find a suitable instrument or a discontinuity to exploit. 
+* Can only account for bias that does not vary over a chosen dimension, such as time or space. 
+
+*** SETTING THE WORKING DIRECTORY AND STARTING A LOG FILE***
+cd "C:\Users\user\Documents\MyFolder\MySubFolder\Method 4"
+log using "method4.log", replace
+log close *at the end*
+
+***FIXED EFFECTS***
+* Exploits some characteristics of a unit fixed in time, space or some other dimension (ex. a family). 
+* In a Panel Data, we have multiple observations per individual to get rid of selection bias. 
+* Panel Study of income dynamics (PSID, US), follows individuals over 7 years (1976-1982). 
+* RQ: What is the causal effect of union membership on wages? 
+
+***LOADING AND EXPLORING THE DATA***
+use "mus08psidextract.dta", clear
+describe
+br
+
+*We observe every individual (column: id) has several observations in time (column t). 
+
+* AN EXAMPLE OF THE WAGE OF INDIVIDUAL 1 OVER TIME:
+graph twoway line lwage t if id==1
+
+*In stata xt is a special package for panels. 
+
+xtset id t
+*It says our dataset is panel (xtset panelvariable timevariable).
+*The unit of observation can be a city, country, firm or something else. 
+*Time usually is year, but it can also be just a number
+*In a ballanced panel we have no missing observations for individuals - every individual is observed every year. 
+*In an unbalanced panel, individuals are observed a different number of times (observations are missing). 
+*If the observations missings are not random, this might bias the results and we need to discuss it in our research. 
+
+xtdescribe
+*528 individuals, each observed for 7 periods of time (years). 
+
+***WITHIN AND BETWEEN INDIVIDUAL VARIATION***
+
+xtsum
+* N stands for person-observations, n for persons, and t for number of time periods. 
+* Between variance: How much are people different from each other? (mean of all observations, ignoring that they are panel)
+* Within variance described as "How much people are different from themselves over time?" (how much individuals change over time) 
+* Time-invariant variables (ethnicity, for example) have no within-variation, since this does not change over time. 
+
+* GRAPHS OVER TIME 
+xtline lwage if id<=5 
+*Wage graph for four first individuasl of the panel. 
+xtline lwage if id<=5, overlay
+*We can put them all in the same graph. 
+
+***POOLED OLS***
+
+gen exp2 = exp^2 
+*generate squared work experience to account for non-linearity. 
+
+reg lwage exp exp2 wks ed union ind occ 
+* In a standard pooled OLS regression, the repeatedness of individuls is not acknowledge (observations are all in the same pool of observations). 
+
+* THERE ARE TWO MAIN PROBLEMS WITH POOLED OLS:
+* 1. NOT ACCOUNTING FOR INDIVIDUAL HETEROGENEITY = SELECTION PROBLEM.
+* Even though we try and control, there will probably be individual differences between people that are not caputred by our covariates
+* Ussually, we have no idea about which direction our unobservables are biasing the results. 
+
+* 2. THE ERRORS (I.E. WHAT WE ARE NOT CONTROLLING FOR) ARE SERIALLY CORRELATED OVER TIME.
+* One person's ability at time T will be highly correlated with the ability in T-1. 
+* It will not bias the result, but it will make the Standard errors, unrealiable. 
+* It can lead to wrong conclusions about the predictive power of the model. 
+* We think that the prediction is better than it actually is (we may wrongly reject null hypothesis). 
+
+reg lwage exp exp2 wks ed union ind occ, vce(cluster id)
+*If we know the source of serial correlation (individual in this case), we can adjust for it using clustered standard errors. 
+*We can solve problem 2 by using clustered standard errors, but problem 1 cannot be solved in a pooled old setting. 
+
+
+***FE ESTIMATION***
+
+* If our problematic unobservable variable (ability) is roughly the same for an individual over time, we can remove this source of bias looking at variation within individuals only. 
+* Logic: A person is likely to be roughly the same over time, so if we look at outcomes before and after the same person has joined the union, the wage effects should not be because of changes in unobserved ability. 
+* "If you're yourself over time, the effect of you joining the union on your wage should be causal - for you". 
+* Since we have manny individuals, we can look at the average effect on the individuals who joined. 
+* The idea is to control away factors that do not change over time (or, in other settings, over space, or within a family). 
+
+* THE FIXED EFFECTS ESTIMATOR IS ALSO CALLED THE "WITHIN ESTIMATOR" (we get rid of problematic "between" variation). 
+
+* WE ACCOUNT FOR INDIVIDUAL EFFECTS BY RUNNING:
+xtreg lwage exp exp2 wks ed union ind occ, fe 
+*'fe' adds fixed effects on the panel level that we defined in xtset. 
+*'fe' works as if every person had their own dummy variable. 
+
+* LET'S COMPARE THE RESULTS FROM THE POOLED OLS WITH THE FE REGRESSION:
+reg lwage exp exp2 wks ed union ind occ, cl(id)
+eststo pooled
+xtreg lwage exp exp2 wks ed union ind occ, fe
+eststo fe
+esttab pooled fe 
+
+* When we have a log-lin model (dependent variable is log transformed, regressor not), we have to exponentiate the estimated coefficient for the regressor. 
+*UNION STATUS, POOLED OLS
+display exp(.1204051) // *we get 1.128.
+*Coefficient of 'union' in parentheses. 
+*The estimated percentage change in the outcome as a regressor increases by one unit is the figure above minus 1.00. 
+*Being a union member is associated with 13% higher wages, which has to be considered substantial. 
+
+*UNION STATUS, FIXED EFFECTS
+display exp(.0316998)  //*we get 1.032. 
+*Joining a union is associated with 3% increase in wages, which is a lot less than with the OLS estimates. 
+
+* When we control for individual fixed effects, effect sizes become a lot smaller. 
+* We managed to capture the selection bias, and it was positive. 
+* The pooled OLS would have been overstimating the effect of union membership because more able people opted to join. 
+* BUT! We need to be careful when interpreting fe results because they are based on averages of wihin-individual variation and are very sensitive to measurement error. 
+* Also, there may be external validity problems, since you only consider the "changers", whi may be a selected group. 
+
+***DIFFERENCE-IN-DIFFERENCES***
+
+* Makes use of the fact that it is not uncommon for (aggregate) study units (i.e. regions and cities) to have the same trends for periods of time. 
+* By identifying a treatment between two units at a certain point in time, it is possible to get to the treatment effect looking at trends after treatment. 
+
+* Mississippi banking crisis of the 1930s (RICHARDSON & TROOST 2009).
+* The federal reserve districts 6 (Atlanta) and 8 (St. Louis) had very different methods of handling failing banks. 
+* Atlanta was in favor of helping banks survive, while St. Louis was strictly non-interventionist. 
+* This difference can be exploited as an "exogeneous policy experiment" 
+* The "experiment" consist of St. Louis Banks as the control group and atlanta banks as the treatment group. 
+
+use banks.dta, clear
+
+***PARALLEL TREND ASSUMPTION***
+
+* Identifying assumption of the diff-in-diff method is parallell trend assumption. 
+* What happened in ST. Louis is what would have happened in Atlanta, had it not been treated. 
+* In order to be able to make this argument, we should look closer at the trends before treatment. 
+
+* LETS GRAPH THE BANKS IN BUSINESS AND BANKS IN OPERATION OVER TIME.
+*tsset timevariable, daily.
+* To use the time dimension of the data from graphing. 
+* 'daily' tells stata that the time variable is given for each day. 
+
+tsset date, daily
+graph twoway tsline bib6 bio6 bib8 bio8, tline(14nov1930 31jul1931)
+* Use time variable as the x-axis variable. 
+* tsline graph options allows us to use the dates in their current format (no conversion to numerical needed). 
+
+* LET'S GRAPH THE COUNTERFACTUAL DEVELOPMENT (WHAT WOULD THE TRENDS LOOK LIKE IF THE UNTREATED HAD BEEN TREATED?).
+* WE ONLY KEEP MID-YEAR OBSERVATIONS (1ST OF JULY EACH YEAR):
+keep if month==7 & day==1
+graph twoway tsline bib6 bio6 bib8 bio8 
+
+* OUR COUNTERFACTUAL CONSISTS OF:
+gen diff=bib8-bib6
+* Difference in surviving banks between treated (Atlanta) and untreated (St. Louis)
+
+gen bibc=bib6*(year==1929)+(bib8-diff[2])*(year>=1930) 
+* This is the counterfactual trend for treated (Atlanta) if they had not been treated, 
+*assuming their trend would have been the same as untreated (St. Louis) group. 
+
+tsline bib6 bib8 bibc
+* Graphing the data and the assumed counterfactual development (the bibc line) 
+
+scatter bib8 bib6 bibc year if year > 1929 & year < 1932, msymbol(circle circle circle) msize(vlarge vlarge vlarge) ///
+mcolor(black black black) connect(l l l)  lpat(l l -) lwidth(medium medthick medium) lcolor(black black black) ///
+xscale(range(1929 1932)) yscale(range(95 170)) xlabels(#4) legend(off) ytitle("Number of Banks in Business") 
+* The assumed treatment effect is the difference between the dotted and solid line (isual examination).  
+
+***DIFF-IN-DIFF REGRESSION***
+
+* Dependent variable: number of banks. 
+* Need dummies for treated (i.e. Atlanta) and post caldwell crash (>1930).
+* The data must bein long format. So, if it is in wide format we: 
+
+expand 2 
+gen treated=1 if _n<7
+*duplicate the data so we get every year twice
+*generate a treatment dummy and select the first 7 observations. 
+
+replace treated=0 if treated==.
+*Note: this treatment dummy also can be regrded as a state fixed effect. 
+
+gen banks=. // This is a column keeping our outcome variable 
+replace banks=bib6 if treated==1 // We put the Atlanta banks here (treated) 
+replace banks=bib8 if treated==0 // And the St. Louis Banks here (untreated) 
+
+gen post=1 if year>1930 
+replace post=0 if year<1931 // This is our dummy for post-caldwell-crash 
+
+drop weekday day month bib6 bio6 bib8 bio8 date diff bibc // drop unnecesary variables 
+
+*We run the regression model
+reg banks i.treated i.post i.treated##i.post
+
+*banks= number of banks
+*then the treated (distict = dummy), we don't use year .Then we have the post (after the crush).
+*itreated, difference between districts, 
+*ipost (difference in number of banks), 
+*itreated interacction.post. ##interaction, you could also put just one. 
+*They lose some banks, but they don't lose as many as they would have. 
+
+* Here, our diff-in-diff estimate is the interaction term. 
+* Note that the i.treated dummy is an "individual fixed effect" for Atlanta.
+* (DIFFERENCE IN LEVELS OF BANKS BETWEEN ATLANTA AND ST. LOUIS IN 1929).
+*We start interpreet from the onstant.  
